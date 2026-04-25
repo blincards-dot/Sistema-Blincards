@@ -25,6 +25,8 @@ db = SQLAlchemy(app)
 
 
 class User(db.Model):
+    __tablename__ = "users"
+
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(120), nullable=False)
     usuario = db.Column(db.String(80), unique=True, nullable=False)
@@ -32,7 +34,7 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, default=False)
     ativo = db.Column(db.Boolean, default=True)
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
-    ordens = db.relationship("Order", backref="responsavel", lazy=True)
+    ordens = db.relationship("Order", backref="responsavel", lazy=True, cascade="all, delete-orphan")
 
     def set_password(self, senha):
         self.senha_hash = generate_password_hash(senha)
@@ -42,6 +44,8 @@ class User(db.Model):
 
 
 class Order(db.Model):
+    __tablename__ = "production_orders"
+
     id = db.Column(db.Integer, primary_key=True)
     numero_oc = db.Column(db.String(30), unique=True, nullable=True)
     cliente = db.Column(db.String(160), nullable=False)
@@ -51,7 +55,7 @@ class Order(db.Model):
     prazo_entrega = db.Column(db.Date, nullable=True)
     arquivo = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(30), nullable=False, default="Em produção")
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     criado_em = db.Column(db.DateTime, default=datetime.utcnow)
     concluido_em = db.Column(db.DateTime, nullable=True)
 
@@ -398,13 +402,13 @@ def atualizar_banco():
     if "postgresql" in str(db.engine.url):
         return
     inspector = inspect(db.engine)
-    if "order" in inspector.get_table_names():
-        colunas = [col["name"] for col in inspector.get_columns("order")]
+    if "production_orders" in inspector.get_table_names():
+        colunas = [col["name"] for col in inspector.get_columns("production_orders")]
         novas_colunas = {
-            "descricao": 'ALTER TABLE "order" ADD COLUMN descricao VARCHAR(500)',
-            "numero_oc": 'ALTER TABLE "order" ADD COLUMN numero_oc VARCHAR(30)',
-            "prazo_entrega": 'ALTER TABLE "order" ADD COLUMN prazo_entrega DATE',
-            "arquivo": 'ALTER TABLE "order" ADD COLUMN arquivo VARCHAR(255)',
+            "descricao": 'ALTER TABLE production_orders ADD COLUMN descricao VARCHAR(500)',
+            "numero_oc": 'ALTER TABLE production_orders ADD COLUMN numero_oc VARCHAR(30)',
+            "prazo_entrega": 'ALTER TABLE production_orders ADD COLUMN prazo_entrega DATE',
+            "arquivo": 'ALTER TABLE production_orders ADD COLUMN arquivo VARCHAR(255)',
         }
         with db.engine.connect() as conn:
             for nome, sql in novas_colunas.items():
@@ -433,7 +437,12 @@ def inicializar_sistema():
         criar_admin_padrao()
 
 
-inicializar_sistema()
+# Importante para Render/Gunicorn: inicializa ao importar o app.
+try:
+    inicializar_sistema()
+except Exception as erro:
+    print("ERRO AO INICIALIZAR O SISTEMA:", repr(erro), flush=True)
+    raise
 
 
 if __name__ == "__main__":
